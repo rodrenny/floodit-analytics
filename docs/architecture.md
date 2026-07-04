@@ -121,5 +121,8 @@ cohort anchor), `no_more_extra_steps` (177), `ad_reward` (122),
 | Budget alert | €5/month, 25/50/100% thresholds (Terraform) | notifies only |
 | Dev-dataset expiry | 7-day default table expiration on `dbt_renny`/`dbt_ci` | storage hygiene |
 
-CI-side gates (lint, slim builds, contracts, cost gate, data diff) arrive in
-Phase 3 and extend this table.
+| CI: lint | ruff + SQLFluff (dbt templater) on every PR | **blocks merge** |
+| CI: slim build | `dbt build state:modified+` on the dev slice, 2 GiB cap | **blocks merge** |
+| CI: contract guard | every mart must set `contract: enforced` | **blocks merge** |
+| CI: cost gate | free dry run per modified model, 1 GiB ceiling, bytes table posted on PR | **blocks merge** |
+| CI: data diff | PK-level `except distinct` vs prod, posted on PR | informs review |

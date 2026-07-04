@@ -94,32 +94,41 @@ metadata-based (table last-modified — free to check): `warn_after: 26h`,
 
 ## GitHub Actions → BigQuery auth (Workload Identity Federation, no keys)
 
-`replay.yml` expects two repository secrets:
+All workflows authenticate via WIF; no JSON key exists at any point. Two
+repository secrets:
 
 | Secret | Value |
 |---|---|
-| `GCP_WORKLOAD_IDENTITY_PROVIDER` | `projects/<PROJECT_NUMBER>/locations/global/workloadIdentityPools/<POOL>/providers/<PROVIDER>` |
+| `GCP_WORKLOAD_IDENTITY_PROVIDER` | `projects/961154607867/locations/global/workloadIdentityPools/github/providers/github-oidc` |
 | `GCP_CI_SERVICE_ACCOUNT` | `floodit-ci@data-eng-491120.iam.gserviceaccount.com` |
 
-One-time setup (owner, not Terraform — keeps infra minimal per scope):
+The pool (`github`) and OIDC provider (`github-oidc`, attribute-condition
+locked to `rodrenny/floodit-analytics`) already exist. **One manual step
+remains — an IAM grant the repo owner must run themselves:**
 
 ```sh
-gcloud iam workload-identity-pools create github --location=global \
-    --display-name="GitHub Actions"
-gcloud iam workload-identity-pools providers create-oidc github-oidc \
-    --location=global --workload-identity-pool=github \
-    --issuer-uri="https://token.actions.githubusercontent.com" \
-    --attribute-mapping="google.subject=assertion.sub,attribute.repository=assertion.repository" \
-    --attribute-condition="assertion.repository == 'rodrenny/floodit-analytics'"
 gcloud iam service-accounts add-iam-policy-binding \
     floodit-ci@data-eng-491120.iam.gserviceaccount.com \
     --role="roles/iam.workloadIdentityUser" \
-    --member="principalSet://iam.googleapis.com/projects/<PROJECT_NUMBER>/locations/global/workloadIdentityPools/github/attribute.repository/rodrenny/floodit-analytics"
+    --member="principalSet://iam.googleapis.com/projects/961154607867/locations/global/workloadIdentityPools/github/attribute.repository/rodrenny/floodit-analytics"
 ```
 
-No JSON key is created at any point.
+## CI gates (every PR, fail-fast)
 
-## Coming in later phases
+`ci.yml` runs, in order: **lint** (ruff + SQLFluff) → **slim build**
+(`state:modified+` with `--defer` against the manifest artifact published
+from `main` by `manifest.yml`; full build if no artifact yet) → **contract
+guard** (every mart `contract: enforced`) → **cost gate** (free dry run per
+modified model, fails > 1 GiB, posts a per-model bytes table on the PR) →
+**data diff** (row counts + PK-level `except distinct` vs prod for modified
+marts, posted on the PR; informational).
 
-- CI PR gates (`ci.yml`) and branch protection settings (require CI green +
-  1 human review; agents never merge) — Phase 3
+## Branch protection (set once in repo settings)
+
+On `main`: require status checks `lint`, `build`, `cost_gate`, `data_diff`
+to pass; require the branch to be up to date; require 1 approving review;
+no force pushes; no direct pushes for admins. **Agents open PRs; humans
+merge — no exceptions.** Note for a single-owner repo: GitHub does not let
+a PR author approve their own PR, so the review requirement documents the
+intended team posture; the enforceable subset (status checks) should always
+be on.
