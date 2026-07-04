@@ -1,0 +1,42 @@
+# Publishes the prod manifest from main so PR builds can run slim CI
+# (state:modified+ with --defer against this artifact).
+
+name: manifest
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  manifest:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_CI_SERVICE_ACCOUNT }}
+
+      - uses: astral-sh/setup-uv@v5
+
+      - name: Install dependencies
+        run: uv sync --all-groups
+
+      - name: Parse project (prod target)
+        working-directory: dbt
+        run: |
+          cp profiles.yml.example profiles.yml
+          uv run dbt deps
+          uv run dbt parse --target prod
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dbt-manifest
+          path: dbt/target/manifest.json
+          retention-days: 90

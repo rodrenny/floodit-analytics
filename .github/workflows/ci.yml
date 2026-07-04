@@ -1,0 +1,159 @@
+# PR gates, fail-fast: lint -> slim build + contracts -> cost gate -> data diff.
+# Agents open PRs; humans merge. CI authenticates via WIF (no key files).
+
+name: ci
+
+on:
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  COST_GATE_MAX_BYTES: "1073741824" # 1 GiB dry-run ceiling per model
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # sqlfluff's dbt templater opens a BigQuery connection
+    steps:
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_CI_SERVICE_ACCOUNT }}
+      - uses: astral-sh/setup-uv@v5
+      - name: Install dependencies
+        run: uv sync --all-groups
+      - name: ruff
+        run: |
+          uv run ruff check .
+          uv run ruff format --check .
+      - name: sqlfluff
+        run: |
+          cp dbt/profiles.yml.example dbt/profiles.yml
+          (cd dbt && uv run dbt deps)
+          uv run sqlfluff lint dbt/models
+
+  build:
+    needs: lint
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      actions: read # to fetch the manifest artifact from main runs
+    steps:
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_CI_SERVICE_ACCOUNT }}
+      - uses: astral-sh/setup-uv@v5
+      - name: Install dependencies
+        run: uv sync --all-groups
+
+      - name: Fetch state manifest from main
+        id: manifest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          artifact_id=$(gh api "/repos/${{ github.repository }}/actions/artifacts?name=dbt-manifest&per_page=1" \
+            --jq '.artifacts[0].id // empty')
+          if [ -n "$artifact_id" ]; then
+            gh api "/repos/${{ github.repository }}/actions/artifacts/${artifact_id}/zip" > manifest.zip
+            mkdir -p state && unzip -o manifest.zip -d state
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No manifest artifact yet — falling back to a full build."
+            echo "found=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Slim build (dev slice, ci target)
+        working-directory: dbt
+        run: |
+          cp profiles.yml.example profiles.yml
+          uv run dbt deps
+          if [ "${{ steps.manifest.outputs.found }}" = "true" ]; then
+            uv run dbt build --target ci --select state:modified+ --defer --state ../state
+            uv run dbt ls --target ci --select state:modified --resource-type model \
+              --output name --state ../state > ../modified_models.txt
+          else
+            uv run dbt build --target ci
+            uv run dbt ls --target ci --resource-type model --output name > ../modified_models.txt
+          fi
+
+      - name: Contract guard (all marts contract-enforced)
+        run: uv run python .github/scripts/check_contracts.py
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ci-build
+          path: |
+            dbt/target/compiled
+            dbt/target/manifest.json
+            modified_models.txt
+
+  cost_gate:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_CI_SERVICE_ACCOUNT }}
+      - uses: astral-sh/setup-uv@v5
+      - name: Install dependencies
+        run: uv sync --all-groups
+      - uses: actions/download-artifact@v4
+        with:
+          name: ci-build
+      - name: Dry-run modified models
+        id: gate
+        run: |
+          uv run python .github/scripts/cost_gate.py \
+            --models-file modified_models.txt --output cost_gate.md \
+            || echo "blocked=true" >> "$GITHUB_OUTPUT"
+      - name: Post PR comment
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh pr comment ${{ github.event.pull_request.number }} --body-file cost_gate.md
+      - name: Fail if over limit
+        if: steps.gate.outputs.blocked == 'true'
+        run: exit 1
+
+  data_diff:
+    needs: cost_gate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_CI_SERVICE_ACCOUNT }}
+      - uses: astral-sh/setup-uv@v5
+      - name: Install dependencies
+        run: uv sync --all-groups
+      - uses: actions/download-artifact@v4
+        with:
+          name: ci-build
+      - name: Diff modified marts against prod
+        run: |
+          uv run python .github/scripts/data_diff.py \
+            --models-file modified_models.txt --manifest dbt/target/manifest.json \
+            --output data_diff.md
+      - name: Post PR comment
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh pr comment ${{ github.event.pull_request.number }} --body-file data_diff.md
