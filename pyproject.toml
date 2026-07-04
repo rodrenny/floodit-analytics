@@ -1,0 +1,36 @@
+[project]
+name = "floodit-analytics"
+version = "0.1.0"
+description = "AI-amplified analytics engineering over the Flood-It! GA4 public export (BigQuery + dbt)"
+requires-python = ">=3.11"
+dependencies = [
+    "google-cloud-bigquery>=3.25",
+]
+
+[dependency-groups]
+dev = [
+    "dbt-bigquery>=1.9",
+    "ruff>=0.8",
+    "sqlfluff>=3.2",
+    "sqlfluff-templater-dbt>=3.2",
+    "pre-commit>=4.0",
+    "pytest>=8.0",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "B",   # bugbear
+    "UP",  # pyupgrade
+    "SIM", # simplify
+]
+
+[tool.pytest.ini_options]
+testpaths = ["loader/tests"]

@@ -1,0 +1,38 @@
+# Copy to dbt/profiles.yml (gitignored) and adjust only if your dev dataset
+# differs. Every target carries maximum_bytes_billed — queries over the cap
+# fail before execution and bill nothing. Never raise a cap; ask a human.
+floodit_analytics:
+  target: dev
+  outputs:
+    dev:
+      type: bigquery
+      method: oauth  # uses gcloud application-default credentials
+      project: data-eng-491120
+      dataset: dbt_renny
+      location: US
+      threads: 4
+      priority: interactive
+      job_execution_timeout_seconds: 300
+      maximum_bytes_billed: 2147483648 # 2 GiB
+
+    ci:
+      type: bigquery
+      method: oauth # CI authenticates via google-github-actions/auth (ADC)
+      project: data-eng-491120
+      dataset: dbt_ci
+      location: US
+      threads: 4
+      priority: interactive
+      job_execution_timeout_seconds: 300
+      maximum_bytes_billed: 2147483648 # 2 GiB
+
+    prod:
+      type: bigquery
+      method: oauth
+      project: data-eng-491120
+      dataset: analytics
+      location: US
+      threads: 4
+      priority: interactive
+      job_execution_timeout_seconds: 600
+      maximum_bytes_billed: 10737418240 # 10 GiB

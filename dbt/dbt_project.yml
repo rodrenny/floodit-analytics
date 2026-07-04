@@ -1,0 +1,33 @@
+name: floodit_analytics
+version: "1.0.0"
+require-dbt-version: ">=1.9.0"
+profile: floodit_analytics
+
+model-paths: ["models"]
+macro-paths: ["macros"]
+test-paths: ["tests"]
+
+target-path: target
+clean-targets:
+  - target
+  - dbt_packages
+
+vars:
+  # Dev slice bounds (YYYYMMDD). Placeholder until Phase 1 confirms the
+  # actual available date range from table metadata. All dev-target queries
+  # must stay inside this slice.
+  dev_start_date: "20180701"
+  dev_end_date: "20180707"
+
+models:
+  floodit_analytics:
+    staging:
+      +materialized: view
+    intermediate:
+      +materialized: view
+    marts:
+      # Marts are contracted from day one: a mart added without explicit
+      # column definitions fails to build, by design.
+      +materialized: table
+      +contract:
+        enforced: true
