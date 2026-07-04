@@ -13,11 +13,13 @@ clean-targets:
   - dbt_packages
 
 vars:
-  # Dev slice bounds (YYYYMMDD). Placeholder until Phase 1 confirms the
-  # actual available date range from table metadata. All dev-target queries
-  # must stay inside this slice.
+  # Dev slice bounds (YYYYMMDD) — inside the verified available range.
+  # All dev-target queries must stay inside this slice.
   dev_start_date: "20180701"
   dev_end_date: "20180707"
+  # Full available range, verified from __TABLES__ metadata (114 shards).
+  full_start_date: "20180612"
+  full_end_date: "20181003"
 
 models:
   floodit_analytics:

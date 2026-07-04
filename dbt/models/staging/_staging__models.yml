@@ -1,0 +1,90 @@
+version: 2
+
+models:
+  - name: stg_floodit__events
+    description: >
+      One row per GA4 event. Renames, casts, and flattens the nested
+      export: common event_params and user_properties become typed columns
+      via the extract_param macro. No joins, no business logic.
+      Dev/ci targets read a bounded slice (vars dev_start_date/dev_end_date);
+      prod reads the full replayed range.
+    columns:
+      - name: event_pk
+        description: >
+          Surrogate key over (user_pseudo_id, event_at, event_name,
+          event_repeat_number). GA4 provides no native event id.
+        data_tests:
+          - unique
+          - not_null
+      - name: event_date
+        description: Event date (UTC), parsed from the shard date.
+        data_tests:
+          - not_null
+      - name: event_at
+        description: Event timestamp (UTC, microsecond precision).
+        data_tests:
+          - not_null
+      - name: event_name
+        description: GA4 event name, e.g. level_start_quickplay.
+        data_tests:
+          - not_null
+      - name: user_pseudo_id
+        description: >
+          Device-scoped pseudonymous user id — the only user identifier in
+          this export (user_id is always null and is dropped).
+        data_tests:
+          - not_null
+      - name: first_touch_at
+        description: Timestamp of the user's first app open.
+      - name: platform
+        description: Client platform.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["ANDROID", "IOS"]
+      - name: device_category
+        description: Device form factor (mobile/tablet).
+      - name: device_os
+        description: Operating system name.
+      - name: device_language
+        description: Device language code.
+      - name: country
+        description: Country derived from IP at event time.
+      - name: app_version
+        description: App version string.
+      - name: acquisition_campaign
+        description: Install campaign name from traffic_source.
+      - name: acquisition_medium
+        description: Install medium (e.g. organic) from traffic_source.
+      - name: acquisition_source
+        description: Install source network from traffic_source.
+      - name: engagement_time_msec
+        description: Engaged time in ms (user_engagement events).
+      - name: board
+        description: Board size, quickplay events (e.g. S/M/L).
+      - name: level_number
+        description: Level number, progressive-mode events (mixed int/float in source, cast to int).
+      - name: level_name
+        description: Level name, progressive-mode events.
+      - name: score
+        description: Score posted (post_score events).
+      - name: event_value
+        description: >
+          GA4 `value` param as float64; semantics vary by event (steps
+          remaining, reward size, spend amount). Typed per-event in marts.
+      - name: virtual_currency_name
+        description: Currency for spend/use events (extra-steps economy).
+      - name: item_name
+        description: Item for spend_virtual_currency / use_extra_steps.
+      - name: screen_class
+        description: Firebase screen class at event time.
+      - name: screen_name
+        description: Firebase screen name (sparsely populated).
+      - name: initial_extra_steps
+        description: >
+          User-property: extra-steps starting grant bucket the user was
+          assigned (stored as string in GA4, cast to int).
+      - name: event_repeat_number
+        description: >
+          1-based counter deduplicating identical (user, timestamp, name)
+          events; part of the surrogate key.

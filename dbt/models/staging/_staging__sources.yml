@@ -1,0 +1,16 @@
+version: 2
+
+sources:
+  - name: firebase_public
+    description: >
+      Public Flood-It! GA4 export: 114 daily-sharded tables,
+      2018-06-12 through 2018-10-03. Used directly by the dev/ci targets
+      for cheap iteration; the prod target repoints to the replayed
+      raw_floodit.events table in Phase 2. Every query against this source
+      must bound _TABLE_SUFFIX.
+    database: firebase-public-project
+    schema: analytics_153293282
+    tables:
+      - name: events
+        identifier: events_*
+        description: One GA4 event per row, nested event_params/user_properties.
