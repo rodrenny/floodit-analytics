@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.pytest_cache/
+.ruff_cache/
+
+# dbt
+dbt/target/
+dbt/dbt_packages/
+dbt/logs/
+dbt/profiles.yml
+logs/
+
+# Terraform
+infra/.terraform/
+infra/.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+
+# Credentials — never commit keys
+*-key.json
+*service-account*.json
+*credentials*.json
+.env
+.env.*
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
