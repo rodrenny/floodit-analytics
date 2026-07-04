@@ -34,3 +34,4 @@ select = [
 
 [tool.pytest.ini_options]
 testpaths = ["loader/tests"]
+pythonpath = ["."]
