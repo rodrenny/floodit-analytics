@@ -1,12 +1,24 @@
-{%- set is_prod = target.name == 'prod' -%}
-{%- set suffix_start = var('full_start_date') if is_prod else var('dev_start_date') -%}
-{%- set suffix_end = var('full_end_date') if is_prod else var('dev_end_date') -%}
+{#
+    prod reads the replayed raw table (partition filter mandatory);
+    dev/ci read the public shards directly on the bounded dev slice.
+    Pseudo-columns are excluded from select *, so both branches yield
+    the identical GA4 shard schema.
+#}
+{%- if target.name == 'prod' -%}
+    {%- set src = source('raw_floodit', 'events') -%}
+    {%- set day_filter = "_partitiondate between parse_date('%Y%m%d', '"
+        ~ var('full_start_date') ~ "') and parse_date('%Y%m%d', '" ~ var('full_end_date') ~ "')" -%}
+{%- else -%}
+    {%- set src = source('firebase_public', 'events') -%}
+    {%- set day_filter = "_table_suffix between '" ~ var('dev_start_date')
+        ~ "' and '" ~ var('dev_end_date') ~ "'" -%}
+{%- endif %}
 
 with source as (
 
     select *
-    from {{ source('firebase_public', 'events') }}
-    where _table_suffix between '{{ suffix_start }}' and '{{ suffix_end }}'
+    from {{ src }}
+    where {{ day_filter }}
 
 ),
 

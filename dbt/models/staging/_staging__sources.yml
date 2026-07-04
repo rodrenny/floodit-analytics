@@ -1,6 +1,26 @@
 version: 2
 
 sources:
+  - name: raw_floodit
+    description: >
+      Replayed raw layer: one ingestion-time partition per simulated day,
+      written exclusively by the replay loader's copy jobs. This is the
+      prod source; require_partition_filter=true means every query must
+      filter _PARTITIONDATE.
+    database: data-eng-491120
+    schema: raw_floodit
+    tables:
+      - name: events
+        description: >
+          GA4 events, schema byte-identical to the public shards. Freshness
+          is metadata-based (table last-modified, free to check): the loader
+          runs on a daily wall-clock cron, so warn/error thresholds measure
+          wall-clock hours since the last successful copy job.
+        config:
+          freshness:
+            warn_after: { count: 26, period: hour }
+            error_after: { count: 50, period: hour }
+
   - name: firebase_public
     description: >
       Public Flood-It! GA4 export: 114 daily-sharded tables,
