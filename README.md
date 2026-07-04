@@ -8,10 +8,10 @@ AI-amplified analytics workflow: agents draft the models, tests, docs, and
 incident reports; layered machine gates (linting, contracts, cost caps,
 data diffs) do the blocking; a human reviews and merges.
 
-> **Status: under construction.** Phases 0 (conventions & scaffolding) and
-> 1 (infra + dbt foundation) are done. Every number in this README comes
-> from a query or run that actually happened, and nothing is written here
-> before it does.
+> **Status: under construction.** Phases 0 (conventions & scaffolding),
+> 1 (infra + dbt foundation), and 2 (replay loader) are done. Every number
+> in this README comes from a query or run that actually happened, and
+> nothing is written here before it does.
 
 ## Cost guardrails — verified, not assumed
 
@@ -37,6 +37,23 @@ operations → daily quota → budget alert) lives in
   the 2 GiB dev cap.
 - Public dataset recon (metadata + three capped queries ≤ 38 MiB each):
   114 shards, 2018-06-12 → 2018-10-03, 5.7M events, 3.87 GiB total.
+
+## Verified so far (Phase 2)
+
+- Replay loader: two consecutive runs loaded `events$20180612` and
+  `events$20180613` (50,000 rows each) via **copy jobs only** — the loader
+  contains no query job; state itself is written with load jobs and read
+  with `tabledata.list`, both free.
+- Idempotency: re-copying 2018-06-12 left the partition byte-identical
+  (numRows 50,000 / numBytes 33,901,717 before and after) and did not
+  advance state.
+- `dbt source freshness --target prod`: **PASS** (metadata-based, age 58s
+  at check time).
+- `dbt build --target prod --select staging` over the replayed raw table:
+  **8/8 PASS**.
+- 15 loader unit tests cover sequencing, clamping at the last shard,
+  state round-trips, and a fake client that fails the suite if the loader
+  ever calls a non-free BigQuery method.
 
 ## Layout
 

@@ -71,7 +71,55 @@ ADC without an explicit quota project.
 The raw table `raw_floodit.events` has `deletion_protection = true`; if you
 genuinely need to destroy it, that flag is a deliberate two-step.
 
+## Replay loader
+
+The loader copies one public shard per run into the matching partition of
+`raw_floodit.events` — copy jobs only, so every run is free and idempotent
+(`WRITE_TRUNCATE` per partition). Replay state (one row: simulation start,
+next shard) lives in `raw_floodit.replay_state`, written via load jobs and
+read via `tabledata.list` — the loader contains no query job at all.
+
+```sh
+uv run python -m loader.replay_loader --reset        # initialize at 2018-06-12
+uv run python -m loader.replay_loader                # load the next day
+uv run python -m loader.replay_loader --catch-up 5   # load the next 6 days
+uv run python -m loader.replay_loader --day 2018-06-15  # re-copy one day, state untouched
+uv run python -m loader.replay_loader --status
+```
+
+In production the daily `replay.yml` workflow runs loader → `dbt build`
+(prod) → `dbt source freshness`. Freshness on `raw_floodit.events` is
+metadata-based (table last-modified — free to check): `warn_after: 26h`,
+`error_after: 50h` of wall-clock time since the last copy job.
+
+## GitHub Actions → BigQuery auth (Workload Identity Federation, no keys)
+
+`replay.yml` expects two repository secrets:
+
+| Secret | Value |
+|---|---|
+| `GCP_WORKLOAD_IDENTITY_PROVIDER` | `projects/<PROJECT_NUMBER>/locations/global/workloadIdentityPools/<POOL>/providers/<PROVIDER>` |
+| `GCP_CI_SERVICE_ACCOUNT` | `floodit-ci@data-eng-491120.iam.gserviceaccount.com` |
+
+One-time setup (owner, not Terraform — keeps infra minimal per scope):
+
+```sh
+gcloud iam workload-identity-pools create github --location=global \
+    --display-name="GitHub Actions"
+gcloud iam workload-identity-pools providers create-oidc github-oidc \
+    --location=global --workload-identity-pool=github \
+    --issuer-uri="https://token.actions.githubusercontent.com" \
+    --attribute-mapping="google.subject=assertion.sub,attribute.repository=assertion.repository" \
+    --attribute-condition="assertion.repository == 'rodrenny/floodit-analytics'"
+gcloud iam service-accounts add-iam-policy-binding \
+    floodit-ci@data-eng-491120.iam.gserviceaccount.com \
+    --role="roles/iam.workloadIdentityUser" \
+    --member="principalSet://iam.googleapis.com/projects/<PROJECT_NUMBER>/locations/global/workloadIdentityPools/github/attribute.repository/rodrenny/floodit-analytics"
+```
+
+No JSON key is created at any point.
+
 ## Coming in later phases
 
-- GitHub Actions secret configuration for BigQuery auth — Phase 3
-- Branch protection settings (require CI green + 1 human review) — Phase 3
+- CI PR gates (`ci.yml`) and branch protection settings (require CI green +
+  1 human review; agents never merge) — Phase 3
