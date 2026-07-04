@@ -48,8 +48,30 @@ misconfigured profile or a runaway agent loop:
 Document owner note: budget alerts (Terraform, Phase 1) are a soft layer on
 top — they do **not** stop spend.
 
+## Infrastructure (Terraform)
+
+Terraform manages datasets, the raw events table, the CI service account,
+IAM bindings, and the budget alert — nothing else. State is local and
+gitignored.
+
+```sh
+brew install hashicorp/tap/terraform   # core homebrew formula is gone (BSL relicensing)
+cd infra
+terraform init
+terraform plan -out=tfplan
+terraform apply tfplan
+```
+
+Required APIs (`gcloud services enable ...`): `bigquery.googleapis.com`,
+`cloudresourcemanager.googleapis.com`, `iam.googleapis.com`,
+`billingbudgets.googleapis.com`. The provider sets
+`user_project_override = true` because the Billing Budgets API rejects user
+ADC without an explicit quota project.
+
+The raw table `raw_floodit.events` has `deletion_protection = true`; if you
+genuinely need to destroy it, that flag is a deliberate two-step.
+
 ## Coming in later phases
 
-- Terraform apply instructions (datasets, CI service account) — Phase 1
 - GitHub Actions secret configuration for BigQuery auth — Phase 3
 - Branch protection settings (require CI green + 1 human review) — Phase 3

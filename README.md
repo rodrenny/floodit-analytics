@@ -8,11 +8,35 @@ AI-amplified analytics workflow: agents draft the models, tests, docs, and
 incident reports; layered machine gates (linting, contracts, cost caps,
 data diffs) do the blocking; a human reviews and merges.
 
-> **Status: under construction.** Phase 0 (conventions & scaffolding) is
-> done. Architecture diagram, guardrail inventory, and verified metrics
-> land as their phases complete — every number in this README will come
-> from a query or run that actually happened, and nothing will be written
-> here before it does.
+> **Status: under construction.** Phases 0 (conventions & scaffolding) and
+> 1 (infra + dbt foundation) are done. Every number in this README comes
+> from a query or run that actually happened, and nothing is written here
+> before it does.
+
+## Cost guardrails — verified, not assumed
+
+Both blocking layers were deliberately tripped and the failures recorded
+(2026-07-05, project `data-eng-491120`):
+
+| Guardrail | Deliberate violation | Observed result |
+|---|---|---|
+| `maximum_bytes_billed` (per-query cap) | Full-range scan (~185 MiB needed) under a 100 MB cap | Job failed, reason `bytesBilledLimitExceeded`: *"Query exceeded limit for bytes billed: 104857600. 193986560 or higher required."* `totalBytesBilled = 0` — nothing was billed. |
+| `require_partition_filter` (schema-level) | Unfiltered `select count(*)` on `raw_floodit.events` | Rejected by BigQuery at validation: *"Cannot query over table 'data-eng-491120.raw_floodit.events' without a filter over column(s) '_PARTITION_LOAD_TIME', '_PARTITIONDATE', '_PARTITIONTIME'"*. |
+
+The full layered inventory (caps → partition enforcement → free-by-design
+operations → daily quota → budget alert) lives in
+[docs/architecture.md](docs/architecture.md#guardrail-inventory).
+
+## Verified so far (Phase 1)
+
+- `terraform apply`: 12 resources — 4 datasets, the partitioned raw table,
+  CI service account + least-privilege IAM, €5/month budget alert.
+- `dbt build --select staging`: **8/8 PASS** (view + 7 tests) on the 7-day
+  dev slice — 350,000 events, 2,399 distinct users, 2018-07-01→07-07;
+  0 bytes for the view build, ~636 MiB total for the test suite, all under
+  the 2 GiB dev cap.
+- Public dataset recon (metadata + three capped queries ≤ 38 MiB each):
+  114 shards, 2018-06-12 → 2018-10-03, 5.7M events, 3.87 GiB total.
 
 ## Layout
 
