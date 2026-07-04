@@ -1,0 +1,61 @@
+# Daily replay: load the next simulated day, rebuild prod, check freshness.
+# In a real deployment this maps 1:1 to an Airflow DAG (load >> build >> monitor).
+#
+# Auth uses Workload Identity Federation via two repo secrets (no key files):
+#   GCP_WORKLOAD_IDENTITY_PROVIDER — full provider resource name
+#   GCP_CI_SERVICE_ACCOUNT         — floodit-ci@data-eng-491120.iam.gserviceaccount.com
+# Setup instructions: docs/setup.md.
+
+name: replay
+
+on:
+  schedule:
+    - cron: "17 6 * * *" # daily, off the top of the hour
+  workflow_dispatch:
+    inputs:
+      catch_up:
+        description: "Extra days to load beyond the next one"
+        required: false
+        default: "0"
+
+concurrency:
+  group: replay
+  cancel-in-progress: false
+
+jobs:
+  replay:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # required for Workload Identity Federation
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_CI_SERVICE_ACCOUNT }}
+
+      - uses: astral-sh/setup-uv@v5
+
+      - name: Install dependencies
+        run: uv sync --all-groups
+
+      - name: Load next simulated day
+        run: uv run python -m loader.replay_loader --catch-up ${{ inputs.catch_up || 0 }}
+
+      - name: Configure dbt profile
+        run: cp dbt/profiles.yml.example dbt/profiles.yml
+
+      - name: Build prod
+        working-directory: dbt
+        run: |
+          uv run dbt deps
+          uv run dbt build --target prod
+
+      - name: Source freshness
+        working-directory: dbt
+        run: uv run dbt source freshness --target prod
+
+      # Phase 4 adds the monitoring step here (Elementary report artifact).
