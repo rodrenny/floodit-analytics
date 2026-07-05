@@ -9,9 +9,9 @@ incident reports; layered machine gates (linting, contracts, cost caps,
 data diffs) do the blocking; a human reviews and merges.
 
 > **Status: under construction.** Phases 0 (conventions & scaffolding),
-> 1 (infra + dbt foundation), and 2 (replay loader) are done. Every number
-> in this README comes from a query or run that actually happened, and
-> nothing is written here before it does.
+> 1 (infra + dbt foundation), 2 (replay loader), and 3 (CI guardrails) are
+> done. Every number in this README comes from a query or run that actually
+> happened, and nothing is written here before it does.
 
 ## Cost guardrails — verified, not assumed
 
@@ -54,6 +54,23 @@ operations → daily quota → budget alert) lives in
 - 15 loader unit tests cover sequencing, clamping at the last shard,
   state round-trips, and a fake client that fails the suite if the loader
   ever calls a non-free BigQuery method.
+
+## Verified so far (Phase 3) — the CI gates, tripped on purpose
+
+Two real acceptance PRs, run against live CI
+(lint → slim build + contract guard → cost gate → data diff, WIF auth,
+no key files):
+
+| PR | Intent | Outcome |
+|---|---|---|
+| [#1 — docs: clarify board param](https://github.com/rodrenny/floodit-analytics/pull/1) | Clean pass | All 4 gates green ([run](https://github.com/rodrenny/floodit-analytics/actions/runs/28724175217)); cost gate dry-ran the modified model at **132.5 MiB — pass** and posted the bytes table as a PR comment. |
+| [#2 — deliberately over-budget model](https://github.com/rodrenny/floodit-analytics/pull/2) | Must be blocked | `stg_floodit__events_wide_scan` dry-ran at **1,735.8 MiB > 1,024 MiB limit → cost_gate failed** ([run](https://github.com/rodrenny/floodit-analytics/actions/runs/28724190811)), data diff skipped by fail-fast, merge impossible under branch protection. Closed unmerged. |
+
+The violation model was sized deliberately at ~1.7 GiB — inside the window
+between the 1 GiB CI cost gate and the 2 GiB `maximum_bytes_billed` build
+cap — to prove the *gate itself* fires, not the byte cap behind it.
+Branch protection on `main` requires all four checks; agents open PRs,
+humans merge.
 
 ## Layout
 
