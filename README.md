@@ -9,9 +9,10 @@ incident reports; layered machine gates (linting, contracts, cost caps,
 data diffs) do the blocking; a human reviews and merges.
 
 > **Status: under construction.** Phases 0 (conventions & scaffolding),
-> 1 (infra + dbt foundation), 2 (replay loader), and 3 (CI guardrails) are
-> done. Every number in this README comes from a query or run that actually
-> happened, and nothing is written here before it does.
+> 1 (infra + dbt foundation), 2 (replay loader), 3 (CI guardrails), and
+> 4 (marts, monitoring, incident injection) are done. Every number in this
+> README comes from a query or run that actually happened, and nothing is
+> written here before it does.
 
 ## Cost guardrails — verified, not assumed
 
@@ -71,6 +72,32 @@ between the 1 GiB CI cost gate and the 2 GiB `maximum_bytes_billed` build
 cap — to prove the *gate itself* fires, not the byte cap behind it.
 Branch protection on `main` requires all four checks; agents open PRs,
 humans merge.
+
+## Verified so far (Phase 4) — marts, monitoring, incidents
+
+- **Modeling** ([PR #4](https://github.com/rodrenny/floodit-analytics/pull/4)):
+  gap-based sessionization (this export predates `ga_session_id`), six
+  contracted marts, 51 tests — `dbt build` 60 PASS / 0 ERROR on the dev
+  slice; funnel invariants pre-verified across all 114 days before being
+  encoded as tests; D7 retention correctly **null** (not zero) where the
+  horizon is unobservable.
+- **Schema evolution absorbed**: the GA4 export grows 4 fields mid-window;
+  the raw table now carries the superset schema and free copy jobs keep
+  working for all 114 shards (probe-verified before adopting — see
+  [architecture.md](docs/architecture.md#schema-evolution-discovered-during-replay)).
+- **Monitoring**: Elementary for schema-change monitoring and the results
+  store; volume/null-rate monitors as deterministic dbt tests, because
+  Elementary's wall-clock-anchored anomaly windows are vacuous on
+  2018-replayed data — found by testing, documented in the
+  [runbook](docs/runbooks/incident_triage.md). Prod build: 95 PASS
+  including monitors; per-run Markdown monitoring report artifact.
+- **All four incident injectors fired their monitor, live:**
+  duplicate-day (50,000 → 100,000 rows) → volume monitor **WARN**;
+  null-spike platform 40% → null-rate monitor **WARN**; drop-column
+  platform → null-rate monitor **WARN**; skip-day → loader logged the
+  injection and left the table unmodified (freshness crosses
+  `warn_after: 26h` at the next daily cron). Each was recovered with an
+  idempotent one-day re-copy and the monitor re-verified green.
 
 ## Layout
 
