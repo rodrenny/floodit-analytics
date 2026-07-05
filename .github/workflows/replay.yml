@@ -58,4 +58,13 @@ jobs:
         working-directory: dbt
         run: uv run dbt source freshness --target prod
 
-      # Phase 4 adds the monitoring step here (Elementary report artifact).
+      - name: Monitoring report (Elementary results)
+        if: always() # report even when freshness or build alerted
+        run: uv run python .github/scripts/monitoring_report.py --output monitoring_report.md
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: monitoring-report
+          path: monitoring_report.md
+          retention-days: 90

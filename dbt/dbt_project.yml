@@ -22,6 +22,12 @@ vars:
   full_end_date: "20181003"
 
 models:
+  # Elementary (monitoring) runs in prod only: dev/CI stay lean and cheap.
+  # Its results land in <prod_dataset>_elementary.
+  elementary:
+    +schema: elementary
+    +enabled: "{{ target.name == 'prod' | as_bool }}"
+
   floodit_analytics:
     staging:
       +materialized: view

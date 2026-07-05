@@ -40,6 +40,17 @@ All datasets are labeled `project=floodit-analytics` for billing-export
 filtering. The CI service account `floodit-ci` holds `bigquery.jobUser` on
 the project and `bigquery.dataEditor` on these four datasets only.
 
+## Schema evolution (discovered during replay)
+
+The GA4 export schema **grew during the window**: `event_value_in_usd`
+(by 07-01), `event_bundle_sequence_id` + `event_server_timestamp_offset`
+(07-02), `event_dimensions` (by 09-01). The raw table therefore carries the
+**superset schema** (vendored from the last shard, `events_20181003`);
+early days hold NULLs in late-added fields. Copy jobs accept
+narrower-schema sources into the superset table (verified with a probe
+before adopting) — exactly how a production warehouse absorbs upstream SDK
+evolution.
+
 ## Raw table design
 
 `raw_floodit.events` is **ingestion-time partitioned** (`_PARTITIONDATE`)
