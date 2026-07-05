@@ -102,3 +102,77 @@ models:
               (retention_d1 is null or retention_d1 between 0 and 1)
               and (retention_d7 is null or retention_d7 between 0 and 1)
               and (retention_d30 is null or retention_d30 between 0 and 1)
+
+  - name: retention_by_extra_steps_grant
+    description: >
+      Grain: one row per extra-steps starting-grant bucket ('3','5','10',
+      '20', and 'unassigned' for users with no observed grant — never
+      hidden). Answers whether a larger starting grant improves retention.
+      Population: users with an observed first_open inside the loaded
+      window. Day-N retention = active exactly N days after first_open, each
+      rate over its own observable-horizon denominator (cohort members whose
+      day N falls inside the loaded window); null (never 0) when the
+      denominator is 0. Grant is the user's latest observed initial_extra_steps
+      (via dim_users) — a mid-life change counts under the latest bucket.
+      Spec: specs/ticket_001_extra_steps_d7_retention.md.
+    config:
+      contract:
+        enforced: true
+    columns:
+      - name: grant_bucket
+        description: Starting-grant bucket ('3','5','10','20','unassigned').
+        data_type: string
+        data_tests:
+          - unique
+          - not_null
+      - name: cohort_users
+        description: Users with observed first_open in this bucket.
+        data_type: int64
+        data_tests:
+          - not_null
+      - name: d1_denominator
+        description: Cohort users whose day-1 horizon is inside the loaded window.
+        data_type: int64
+      - name: d7_denominator
+        description: Cohort users whose day-7 horizon is inside the loaded window.
+        data_type: int64
+      - name: d30_denominator
+        description: Cohort users whose day-30 horizon is inside the loaded window.
+        data_type: int64
+      - name: retained_d1
+        description: Bucket members active exactly 1 day after first_open.
+        data_type: int64
+      - name: retained_d7
+        description: Bucket members active exactly 7 days after first_open.
+        data_type: int64
+      - name: retained_d30
+        description: Bucket members active exactly 30 days after first_open.
+        data_type: int64
+      - name: retention_d1
+        description: retained_d1 / d1_denominator; null if denominator 0.
+        data_type: float64
+      - name: retention_d7
+        description: retained_d7 / d7_denominator; null if denominator 0.
+        data_type: float64
+      - name: retention_d30
+        description: retained_d30 / d30_denominator; null if denominator 0.
+        data_type: float64
+    data_tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: >
+              (retention_d1 is null or retention_d1 between 0 and 1)
+              and (retention_d7 is null or retention_d7 between 0 and 1)
+              and (retention_d30 is null or retention_d30 between 0 and 1)
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: >
+              d1_denominator <= cohort_users
+              and d7_denominator <= cohort_users
+              and d30_denominator <= cohort_users
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: >
+              retained_d1 <= d1_denominator
+              and retained_d7 <= d7_denominator
+              and retained_d30 <= d30_denominator

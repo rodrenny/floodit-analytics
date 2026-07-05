@@ -20,9 +20,9 @@ capitalisation_policy = lower
 
 [sqlfluff:rules:capitalisation.identifiers]
 extended_capitalisation_policy = snake
-# CP02's snake regex rejects metric suffixes like retention_d7, which are
-# the project-standard names (see CLAUDE.md testing examples).
-ignore_words_regex = ^(is_)?(retained|retention)_d[0-9]+$
+# CP02's snake heuristic rejects valid metric names with digit/letter
+# boundaries (retention_d7, d30_denominator) that are project-standard.
+ignore_words_regex = ^((is_)?(retained|retention)_d[0-9]+|d[0-9]+_denominator)$
 
 [sqlfluff:rules:capitalisation.functions]
 extended_capitalisation_policy = lower
