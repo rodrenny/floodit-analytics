@@ -1,5 +1,10 @@
-"""Data diff for modified marts: row counts plus PK-level EXCEPT DISTINCT
-between prod (analytics) and the PR's CI build (dbt_ci).
+"""Data diff for modified marts between prod (analytics) and the PR's CI
+build (dbt_ci): PK-set differences AND value differences for shared PKs.
+
+The value diff is the important part — a PR can change a metric (retention_d7,
+dau, funnel counts) while preserving every primary key, which a PK-only diff
+would report as clean. For each PK present in both, we compare a hash of the
+whole row and count the rows whose values moved.
 
 Informational — it posts evidence for the human reviewer; it does not fail
 the build. Every query carries maximum_bytes_billed.
@@ -38,16 +43,37 @@ def scalar(client: bigquery.Client, sql: str) -> int:
     return next(iter(client.query(sql, job_config=job_config).result()))[0]
 
 
+def changed_rows(client: bigquery.Client, prod: str, ci: str, pk: str) -> int:
+    """Rows whose PK exists in both sides but whose values differ. Compares a
+    hash of the whole row over the shared PK space (the PK is part of the
+    hash but equal by construction, so only non-key changes register)."""
+    sql = f"""
+        with prod_fp as (
+            select {pk} as _pk, farm_fingerprint(to_json_string(t)) as _fp
+            from {prod} as t
+        ),
+        ci_fp as (
+            select {pk} as _pk, farm_fingerprint(to_json_string(t)) as _fp
+            from {ci} as t
+        )
+        select count(*)
+        from prod_fp
+        join ci_fp using (_pk)
+        where prod_fp._fp != ci_fp._fp
+    """
+    return scalar(client, sql)
+
+
 def diff_model(client: bigquery.Client, name: str, pk: str | None) -> list[str]:
     prod = f"`{PROJECT_ID}.{PROD_DATASET}.{name}`"
     ci = f"`{PROJECT_ID}.{CI_DATASET}.{name}`"
     try:
         prod_rows = scalar(client, f"select count(*) from {prod}")
     except NotFound:
-        return [f"| `{name}` | new mart — no prod table to diff against | — | — | — |"]
+        return [f"| `{name}` | new mart — no prod table to diff against | — | — | — | — |"]
     ci_rows = scalar(client, f"select count(*) from {ci}")
     if pk is None:
-        return [f"| `{name}` | {prod_rows:,} | {ci_rows:,} | no unique test found | — |"]
+        return [f"| `{name}` | {prod_rows:,} | {ci_rows:,} | no unique test found | — | — |"]
     only_prod = scalar(
         client,
         f"select count(*) from (select {pk} from {prod} except distinct select {pk} from {ci})",
@@ -56,7 +82,10 @@ def diff_model(client: bigquery.Client, name: str, pk: str | None) -> list[str]:
         client,
         f"select count(*) from (select {pk} from {ci} except distinct select {pk} from {prod})",
     )
-    return [f"| `{name}` | {prod_rows:,} | {ci_rows:,} | {only_prod:,} | {only_ci:,} |"]
+    changed = changed_rows(client, prod, ci, pk)
+    return [
+        f"| `{name}` | {prod_rows:,} | {ci_rows:,} | {only_prod:,} | {only_ci:,} | {changed:,} |"
+    ]
 
 
 def main() -> int:
@@ -80,22 +109,25 @@ def main() -> int:
             marts.append((node["name"], primary_key(manifest, node["unique_id"])))
 
     lines = [
-        "## Data diff — prod vs PR build (PK-level, `except distinct`)",
+        "## Data diff — prod vs PR build (PK sets **and** values)",
         "",
-        "| mart | prod rows | PR rows | PKs only in prod | PKs only in PR |",
-        "|---|---:|---:|---:|---:|",
+        "| mart | prod rows | PR rows | PKs only in prod | PKs only in PR | rows changed |",
+        "|---|---:|---:|---:|---:|---:|",
     ]
     if not marts:
-        lines.append("| _no modified marts_ | — | — | — | — |")
+        lines.append("| _no modified marts_ | — | — | — | — | — |")
     else:
         client = bigquery.Client(project=PROJECT_ID)
         for name, pk in sorted(marts):
             lines.extend(diff_model(client, name, pk))
         lines += [
             "",
-            "PK-count differences on the dev slice are expected when the PR "
-            "changes grain or filters — the reviewer judges whether they match "
-            "the PR's stated intent.",
+            "**rows changed** counts shared PKs whose values differ. It is "
+            "non-zero when the PR intentionally changes a metric — but also "
+            "when prod's full range and the CI dev-slice window legitimately "
+            "produce different values for the same key (notably retention, "
+            "whose horizon depends on how many days are loaded). The reviewer "
+            "judges whether the change matches the PR's stated intent.",
         ]
 
     report = "\n".join(lines) + "\n"
