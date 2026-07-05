@@ -78,7 +78,9 @@ jobs:
           uv run dbt deps
           if [ "${{ steps.manifest.outputs.found }}" = "true" ]; then
             uv run dbt build --target ci --select state:modified+ --defer --state ../state
-            uv run dbt --quiet ls --target ci --select state:modified --resource-type model \
+            # Cost-gate the same set the build runs (modified + downstream):
+            # a changed upstream model can make a downstream mart expensive.
+            uv run dbt --quiet ls --target ci --select state:modified+ --resource-type model \
               --output name --state ../state > ../modified_models.txt
           else
             uv run dbt build --target ci

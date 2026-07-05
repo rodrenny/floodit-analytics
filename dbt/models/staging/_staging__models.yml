@@ -21,8 +21,12 @@ models:
     columns:
       - name: event_pk
         description: >
-          Surrogate key over (user_pseudo_id, event_at, event_name,
-          event_repeat_number). GA4 provides no native event id.
+          Deterministic surrogate key: a hash of the event's content
+          (user_pseudo_id, event_at, event_name, and the event_params JSON).
+          GA4 provides no native event id. Byte-identical duplicate events —
+          which GA4 occasionally emits — collapse to a single row, so the key
+          is unique and stable across runs and across the dev (public shard)
+          and prod (replayed raw) sources.
         data_tests:
           - unique
           - not_null
@@ -96,7 +100,3 @@ models:
         description: >
           User-property: extra-steps starting grant bucket the user was
           assigned (stored as string in GA4, cast to int).
-      - name: event_repeat_number
-        description: >
-          1-based counter deduplicating identical (user, timestamp, name)
-          events; part of the surrogate key.
