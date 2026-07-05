@@ -8,6 +8,16 @@ models:
       via the extract_param macro. No joins, no business logic.
       Dev/ci targets read a bounded slice (vars dev_start_date/dev_end_date);
       prod reads the full replayed range.
+    # Monitoring: Elementary schema_changes is run-based, so it works with
+    # replayed 2018 timestamps. Volume and null-rate monitors are
+    # deterministic singular tests in tests/monitors/ — Elementary's
+    # timestamp-anchored anomaly tests are vacuous on replayed data
+    # (documented in docs/runbooks/incident_triage.md).
+    data_tests:
+      - elementary.schema_changes:
+          config:
+            enabled: "{{ (target.name == 'prod') | as_bool }}"
+            severity: warn
     columns:
       - name: event_pk
         description: >
