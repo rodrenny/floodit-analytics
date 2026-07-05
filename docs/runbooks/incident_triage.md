@@ -54,9 +54,28 @@ uv run python -m loader.incidents --null-spike platform 0.4
 4. Recover:
    - skip-day: nothing to fix — the next run resumes; or run the loader
      manually with `--catch-up N` to close the gap.
-   - duplicate-day / drop-column / null-spike: re-copy the day —
-     `uv run python -m loader.replay_loader --day <YYYY-MM-DD>`
-     (idempotent WRITE_TRUNCATE restores the pristine shard), then re-run
-     `dbt build --target prod` for affected downstream days.
-5. Phase 5 adds `/triage-incident`, which automates steps 1–4 into an RCA
-   report + draft fix PR.
+   - duplicate-day / drop-column / null-spike: re-copy the day, then rebuild.
+     The re-copy is always the same (idempotent WRITE_TRUNCATE restores the
+     pristine shard):
+
+     ```sh
+     uv run python -m loader.replay_loader --day <YYYY-MM-DD>
+     ```
+
+     **The rebuild depends on how old the repaired day is**, because
+     `fct_events` is incremental with a 2-day lookback:
+
+     - *Recent day* (within the last 2 loaded days): a normal
+       `dbt build --target prod` picks it up — the default lookback covers it.
+     - *Older day*: the default lookback does **not** reach it. Rebuild
+       `fct_events` from the repaired day forward, which also refreshes the
+       downstream marts (they are tables, rebuilt in full each run):
+
+       ```sh
+       cd dbt && uv run dbt build --target prod --select fct_events+ \
+         --vars '{rebuild_start_date: "<YYYY-MM-DD>"}'
+       ```
+
+       `insert_overwrite` replaces only the partitions from that day forward,
+       so the repair propagates without a full-table refresh.
+5. `/triage-incident` automates steps 1–4 into an RCA report + draft fix PR.

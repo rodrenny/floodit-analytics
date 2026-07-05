@@ -11,6 +11,13 @@
     One row per event, session-attributed. Incremental at daily grain:
     insert_overwrite rewrites the last 2 loaded days each run so sessions
     that cross midnight settle once the following day arrives.
+
+    Repairing an OLD partition: the default lookback only covers the two
+    newest days, so a day repaired by `replay_loader --day <old>` would not
+    propagate here. Pass `--vars '{rebuild_start_date: "YYYY-MM-DD"}'` to
+    rebuild from that day forward instead. insert_overwrite replaces exactly
+    the partitions the query returns, so only the repaired days change.
+    (See docs/runbooks/incident_triage.md.)
 #}
 
 with events as (
@@ -54,7 +61,9 @@ joined as (
         events.initial_extra_steps
     from events
     inner join sessions on events.event_pk = sessions.event_pk
-    {% if is_incremental() %}
+    {% if is_incremental() and var('rebuild_start_date', none) is not none %}
+        where events.event_date >= date('{{ var("rebuild_start_date") }}')
+    {% elif is_incremental() %}
         where events.event_date >= (
             select date_sub(max(existing.event_date), interval 1 day)
             from {{ this }} as existing
