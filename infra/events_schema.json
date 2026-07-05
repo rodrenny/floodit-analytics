@@ -65,6 +65,16 @@
   },
   {
     "mode": "NULLABLE",
+    "name": "event_bundle_sequence_id",
+    "type": "INTEGER"
+  },
+  {
+    "mode": "NULLABLE",
+    "name": "event_server_timestamp_offset",
+    "type": "INTEGER"
+  },
+  {
+    "mode": "NULLABLE",
     "name": "user_id",
     "type": "STRING"
   },
@@ -200,6 +210,38 @@
         "mode": "NULLABLE",
         "name": "time_zone_offset_seconds",
         "type": "INTEGER"
+      },
+      {
+        "mode": "NULLABLE",
+        "name": "browser",
+        "type": "STRING"
+      },
+      {
+        "mode": "NULLABLE",
+        "name": "browser_version",
+        "type": "STRING"
+      },
+      {
+        "fields": [
+          {
+            "mode": "NULLABLE",
+            "name": "browser",
+            "type": "STRING"
+          },
+          {
+            "mode": "NULLABLE",
+            "name": "browser_version",
+            "type": "STRING"
+          },
+          {
+            "mode": "NULLABLE",
+            "name": "hostname",
+            "type": "STRING"
+          }
+        ],
+        "mode": "NULLABLE",
+        "name": "web_info",
+        "type": "RECORD"
       }
     ],
     "mode": "NULLABLE",
@@ -226,6 +268,16 @@
       {
         "mode": "NULLABLE",
         "name": "city",
+        "type": "STRING"
+      },
+      {
+        "mode": "NULLABLE",
+        "name": "sub_continent",
+        "type": "STRING"
+      },
+      {
+        "mode": "NULLABLE",
+        "name": "metro",
         "type": "STRING"
       }
     ],
@@ -296,5 +348,17 @@
     "mode": "NULLABLE",
     "name": "platform",
     "type": "STRING"
+  },
+  {
+    "fields": [
+      {
+        "mode": "NULLABLE",
+        "name": "hostname",
+        "type": "STRING"
+      }
+    ],
+    "mode": "NULLABLE",
+    "name": "event_dimensions",
+    "type": "RECORD"
   }
 ]
