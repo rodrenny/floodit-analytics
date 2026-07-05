@@ -36,6 +36,9 @@ STATE_SCHEMA = [
     bigquery.SchemaField("simulation_start_date", "DATE", mode="REQUIRED"),
     bigquery.SchemaField("next_shard_date", "DATE", mode="REQUIRED"),
     bigquery.SchemaField("updated_at", "TIMESTAMP", mode="REQUIRED"),
+    # Incident injection (see loader/incidents.py --skip-day): while > 0,
+    # each run decrements and loads nothing, simulating a stalled pipeline.
+    bigquery.SchemaField("skip_runs", "INTEGER", mode="NULLABLE"),
 ]
 
 logger = logging.getLogger("replay_loader")
@@ -45,6 +48,7 @@ logger = logging.getLogger("replay_loader")
 class ReplayState:
     simulation_start_date: date
     next_shard_date: date
+    skip_runs: int = 0
 
 
 def shard_table(day: date) -> str:
@@ -75,6 +79,7 @@ def advance(state: ReplayState, loaded_through: date) -> ReplayState:
     return ReplayState(
         simulation_start_date=state.simulation_start_date,
         next_shard_date=loaded_through + timedelta(days=1),
+        skip_runs=state.skip_runs,
     )
 
 
@@ -83,6 +88,7 @@ def state_to_row(state: ReplayState) -> dict:
         "simulation_start_date": state.simulation_start_date.isoformat(),
         "next_shard_date": state.next_shard_date.isoformat(),
         "updated_at": datetime.now(UTC).isoformat(),
+        "skip_runs": state.skip_runs,
     }
 
 
@@ -98,6 +104,7 @@ def read_state(client: bigquery.Client) -> ReplayState | None:
     return ReplayState(
         simulation_start_date=row["simulation_start_date"],
         next_shard_date=row["next_shard_date"],
+        skip_runs=row.get("skip_runs") or 0,
     )
 
 
@@ -106,6 +113,8 @@ def write_state(client: bigquery.Client, state: ReplayState) -> None:
     job_config = bigquery.LoadJobConfig(
         schema=STATE_SCHEMA,
         write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE,
+        # WRITE_TRUNCATE replaces the table schema wholesale, so adding
+        # columns (e.g. skip_runs) needs no schema_update_options.
     )
     job = client.load_table_from_json([state_to_row(state)], state_table(), job_config=job_config)
     job.result()
@@ -120,6 +129,15 @@ def copy_shard(client: bigquery.Client, day: date) -> None:
     client.copy_table(shard_table(day), partition_table(day), job_config=job_config).result()
 
 
+def copy_shard_append(client: bigquery.Client, day: date) -> None:
+    """Append a shard onto its partition — only used by the duplicate-day
+    incident injector. Still a free copy job."""
+    job_config = bigquery.CopyJobConfig(
+        write_disposition=bigquery.WriteDisposition.WRITE_APPEND,
+    )
+    client.copy_table(shard_table(day), partition_table(day), job_config=job_config).result()
+
+
 def partition_info(client: bigquery.Client, day: date) -> tuple[int, int]:
     """(num_rows, num_bytes) of one partition, via table metadata (free)."""
     table = client.get_table(partition_table(day))
@@ -130,6 +148,14 @@ def run_replay(client: bigquery.Client, catch_up: int = 0) -> list[date]:
     state = read_state(client)
     if state is None:
         raise SystemExit("No replay state found — initialize with --reset first.")
+    if state.skip_runs > 0:
+        logger.warning(
+            "INCIDENT INJECTION: skipping this run (%d skip(s) remaining); nothing loaded.",
+            state.skip_runs - 1,
+        )
+        state.skip_runs -= 1
+        write_state(client, state)
+        return []
     days = days_to_load(state, catch_up)
     if not days:
         logger.info(
