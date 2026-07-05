@@ -67,15 +67,22 @@ uv run python -m loader.incidents --null-spike platform 0.4
 
      - *Recent day* (within the last 2 loaded days): a normal
        `dbt build --target prod` picks it up — the default lookback covers it.
-     - *Older day*: the default lookback does **not** reach it. Rebuild
-       `fct_events` from the repaired day forward, which also refreshes the
-       downstream marts (they are tables, rebuilt in full each run):
+     - *Older day*: the default lookback does **not** reach it. Run a **full
+       prod build** with the rebuild var — not `fct_events+`. Only
+       `level_funnel_daily` and `extra_steps_economy_daily` are downstream of
+       `fct_events`; the other marts (`dim_users`, `daily_active_users`,
+       `retention_cohorts`, `retention_by_extra_steps_grant`) read
+       staging/intermediate directly, so `fct_events+` would leave them stale.
+       A full build rebuilds every mart, and the var makes `fct_events`
+       rebuild the old partition:
 
        ```sh
-       cd dbt && uv run dbt build --target prod --select fct_events+ \
+       cd dbt && uv run dbt build --target prod \
          --vars '{rebuild_start_date: "<YYYY-MM-DD>"}'
        ```
 
-       `insert_overwrite` replaces only the partitions from that day forward,
-       so the repair propagates without a full-table refresh.
+       The staging and intermediate models are views, so they reflect the
+       repaired raw data immediately; every table-materialized mart then
+       rebuilds from them in full, while `insert_overwrite` replaces only
+       `fct_events` partitions from the repaired day forward.
 5. `/triage-incident` automates steps 1–4 into an RCA report + draft fix PR.
