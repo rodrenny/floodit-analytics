@@ -67,22 +67,32 @@ renamed as (
         safe_cast(
             {{ extract_param('initial_extra_steps', 'string', column='user_properties') }}
             as int64
-        ) as initial_extra_steps
+        ) as initial_extra_steps,
+
+        -- content fingerprint (helper, dropped below): the natural key of an
+        -- event. Uses only fields present identically in the public shards
+        -- and the replayed raw table, so event_pk matches across dev and prod
+        -- sources despite the raw table's wider (superset) schema.
+        to_json_string(event_params) as event_params_json
 
     from source
 
 ),
 
-numbered as (
+deduplicated as (
 
-    -- GA4 has no event id and identical events can share a microsecond;
-    -- the repeat number makes the surrogate key collision-proof.
-    select
-        *,
-        row_number() over (
-            partition by user_pseudo_id, event_at, event_name
-        ) as event_repeat_number
+    -- GA4 has no native event id and occasionally emits byte-identical
+    -- duplicate events. Verified on this export: every collision on
+    -- (user, event_at, event_name, params) is a true duplicate — distinct
+    -- events never collide — so collapsing them is correct and makes event_pk
+    -- deterministic. (row_number() without an order by, used previously,
+    -- assigned the key arbitrarily across runs; identical rows have no
+    -- natural tie-breaker, so dedup is the only deterministic fix.)
+    select *
     from renamed
+    qualify row_number() over (
+        partition by user_pseudo_id, event_at, event_name, event_params_json
+    ) = 1
 
 ),
 
@@ -90,10 +100,10 @@ final as (
 
     select
         {{ dbt_utils.generate_surrogate_key(
-            ['user_pseudo_id', 'event_at', 'event_name', 'event_repeat_number']
+            ['user_pseudo_id', 'event_at', 'event_name', 'event_params_json']
         ) }} as event_pk,
-        *
-    from numbered
+        * except (event_params_json)
+    from deduplicated
 
 )
 
