@@ -1,6 +1,6 @@
 ---
 ticket: tickets/examples/ticket_001_extra_steps_d7_retention.md
-status: draft # a human flips draft -> approved
+status: approved # human sign-off: rodrenny, 2026-07-05
 estimated_cost: 425138237 # bytes, dry run of the model-shaped join at prod scale (~405 MiB)
 ---
 
