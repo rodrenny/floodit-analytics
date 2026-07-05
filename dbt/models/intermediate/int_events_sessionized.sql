@@ -65,6 +65,7 @@ final as (
         event_date,
         session_number,
         is_session_first_event,
+        seconds_since_previous_event,
         {{ dbt_utils.generate_surrogate_key(['user_pseudo_id', 'session_number']) }} as session_id
     from numbered
 
