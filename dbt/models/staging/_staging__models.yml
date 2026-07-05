@@ -21,12 +21,13 @@ models:
     columns:
       - name: event_pk
         description: >
-          Deterministic surrogate key: a hash of the event's content
-          (user_pseudo_id, event_at, event_name, and the event_params JSON).
-          GA4 provides no native event id. Byte-identical duplicate events —
-          which GA4 occasionally emits — collapse to a single row, so the key
-          is unique and stable across runs and across the dev (public shard)
-          and prod (replayed raw) sources.
+          Deterministic surrogate key: a hash of the event's full normalized
+          payload (every output column plus the event_params JSON). GA4
+          provides no native event id. Because the key covers the whole
+          payload, only rows identical in every kept attribute collapse — so
+          the key never depends on an arbitrary choice between differing rows.
+          Unique and stable across runs and across the dev (public shard) and
+          prod (replayed raw) sources.
         data_tests:
           - unique
           - not_null
