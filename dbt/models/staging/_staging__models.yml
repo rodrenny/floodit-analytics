@@ -61,7 +61,9 @@ models:
       - name: engagement_time_msec
         description: Engaged time in ms (user_engagement events).
       - name: board
-        description: Board size, quickplay events (e.g. S/M/L).
+        description: >
+          Board size for quickplay-mode events only (null on progressive-mode
+          events, which carry level_number/level_name instead).
       - name: level_number
         description: Level number, progressive-mode events (mixed int/float in source, cast to int).
       - name: level_name

@@ -49,7 +49,9 @@ renamed as (
         traffic_source.source as acquisition_source,
 
         -- event_params (this export predates ga_session_id: sessionization
-        -- happens downstream from session_start + engagement gaps)
+        -- happens downstream from session_start + engagement gaps).
+        -- board is only set on *_quickplay events; progressive-mode events
+        -- carry level_number/level_name instead.
         {{ extract_param('engagement_time_msec', 'int') }} as engagement_time_msec,
         {{ extract_param('board', 'string') }} as board,
         cast({{ extract_param('level', 'numeric') }} as int64) as level_number,
