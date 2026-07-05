@@ -1,0 +1,57 @@
+version: 2
+
+models:
+  - name: extra_steps_economy_daily
+    description: >
+      Grain: one row per day. The extra-steps virtual-currency economy:
+      steps spent (spend_virtual_currency, value = steps 1..20),
+      steps used at level end (use_extra_steps), exhaustions
+      (no_more_extra_steps), and rewarded-ad grants (ad_reward, value =
+      steps granted). virtual_currency_name is always 'steps'; item_name
+      encodes the level number as a string — verified by recon queries.
+    config:
+      contract:
+        enforced: true
+    columns:
+      - name: event_date
+        description: Calendar day (UTC).
+        data_type: date
+        data_tests:
+          - unique
+          - not_null
+      - name: spend_events
+        description: spend_virtual_currency event count.
+        data_type: int64
+        data_tests:
+          - not_null
+      - name: steps_spent
+        description: Total steps spent.
+        data_type: float64
+      - name: spenders
+        description: Distinct users spending steps.
+        data_type: int64
+      - name: use_events
+        description: use_extra_steps event count.
+        data_type: int64
+      - name: steps_used
+        description: Total steps used.
+        data_type: float64
+      - name: exhaustion_events
+        description: no_more_extra_steps event count.
+        data_type: int64
+      - name: exhausted_users
+        description: Distinct users running out of steps.
+        data_type: int64
+      - name: ad_rewards
+        description: ad_reward event count.
+        data_type: int64
+      - name: steps_granted_by_ads
+        description: Total steps granted by rewarded ads.
+        data_type: float64
+    data_tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "steps_spent >= 0 and steps_used >= 0 and steps_granted_by_ads >= 0"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "spenders <= spend_events"

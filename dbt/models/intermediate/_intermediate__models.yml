@@ -1,0 +1,46 @@
+version: 2
+
+models:
+  - name: int_events_sessionized
+    description: >
+      One row per event with a derived session. Sessions are gap-based
+      (new session after 30 minutes of inactivity, GA4's own timeout)
+      because this export predates ga_session_id. Not exposed to consumers.
+    columns:
+      - name: event_pk
+        description: Event surrogate key (from staging).
+        data_tests:
+          - unique
+          - not_null
+      - name: session_id
+        description: Surrogate over (user_pseudo_id, session_number).
+        data_tests:
+          - not_null
+      - name: session_number
+        description: 1-based session counter per user, ordered by time.
+      - name: is_session_first_event
+        description: True on the first event of each session.
+      - name: seconds_since_previous_event
+        description: Gap to the user's previous event; null on their first.
+
+  - name: int_user_days
+    description: >
+      One row per user per active day with rolled-up activity (events,
+      sessions, mode flags, engagement minutes). The spine for DAU and
+      retention. Not exposed to consumers.
+    columns:
+      - name: user_day_pk
+        description: Surrogate over (user_pseudo_id, event_date).
+        data_tests:
+          - unique
+          - not_null
+      - name: user_pseudo_id
+        data_tests:
+          - not_null
+      - name: event_date
+        data_tests:
+          - not_null
+      - name: num_sessions
+        description: Distinct sessions touching this user-day.
+        data_tests:
+          - not_null

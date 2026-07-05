@@ -1,0 +1,165 @@
+version: 2
+
+models:
+  - name: fct_events
+    description: >
+      One row per GA4 event, session-attributed via the 30-minute-gap
+      sessionization (this export predates ga_session_id). Incremental at
+      daily grain: insert_overwrite rewrites the last 2 loaded days so
+      midnight-crossing sessions settle when the next day arrives.
+      Grain: event (event_pk). Filters: none — all loaded events.
+    config:
+      contract:
+        enforced: true
+    columns:
+      - name: event_pk
+        description: Surrogate key over (user, timestamp, name, repeat number).
+        data_type: string
+        data_tests:
+          - unique
+          - not_null
+      - name: event_date
+        description: Event date (UTC); the partition column.
+        data_type: date
+        data_tests:
+          - not_null
+      - name: event_at
+        description: Event timestamp (UTC, microseconds).
+        data_type: timestamp
+      - name: event_name
+        description: GA4 event name.
+        data_type: string
+        data_tests:
+          - not_null
+      - name: user_pseudo_id
+        description: Device-scoped user id.
+        data_type: string
+        data_tests:
+          - not_null
+      - name: session_id
+        description: Gap-based session surrogate (30-min inactivity timeout).
+        data_type: string
+        data_tests:
+          - not_null
+      - name: platform
+        description: ANDROID or IOS.
+        data_type: string
+      - name: device_category
+        description: Device form factor.
+        data_type: string
+      - name: device_os
+        description: Operating system.
+        data_type: string
+      - name: country
+        description: Country from IP at event time.
+        data_type: string
+      - name: app_version
+        description: App version string.
+        data_type: string
+      - name: board
+        description: Quickplay board size (S/M/L); null outside quickplay.
+        data_type: string
+      - name: level_number
+        description: Progressive-mode level number.
+        data_type: int64
+      - name: level_name
+        description: Progressive-mode level name.
+        data_type: string
+      - name: score
+        description: Score posted (post_score).
+        data_type: float64
+      - name: event_value
+        description: GA4 `value` param; semantics vary by event_name (steps for economy events, reward size for ad_reward).
+        data_type: float64
+      - name: virtual_currency_name
+        description: Always 'steps' on economy events.
+        data_type: string
+      - name: item_name
+        description: Level number as string on economy events.
+        data_type: string
+      - name: screen_class
+        description: Firebase screen class.
+        data_type: string
+      - name: engagement_time_msec
+        description: Engaged milliseconds (user_engagement).
+        data_type: int64
+      - name: initial_extra_steps
+        description: Extra-steps starting-grant experiment bucket.
+        data_type: int64
+    data_tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "event_date between '2018-06-12' and '2018-10-03'"
+
+  - name: dim_users
+    description: >
+      One row per user (user_pseudo_id, device-scoped — the only identifier
+      in this export). first_open_at is null when the install predates the
+      loaded window; retention cohorts only use rows where
+      has_observed_first_open. Grain: user.
+    config:
+      contract:
+        enforced: true
+    columns:
+      - name: user_pseudo_id
+        description: Device-scoped user id.
+        data_type: string
+        data_tests:
+          - unique
+          - not_null
+      - name: first_open_at
+        description: Timestamp of the observed first_open event, if any.
+        data_type: timestamp
+      - name: has_observed_first_open
+        description: True when first_open occurred inside the loaded window.
+        data_type: boolean
+        data_tests:
+          - not_null
+      - name: first_touch_at
+        description: Device-reported first-touch timestamp (may predate the window).
+        data_type: timestamp
+      - name: first_seen_date
+        description: First date with any event in the loaded window.
+        data_type: date
+        data_tests:
+          - not_null
+      - name: last_seen_date
+        description: Most recent date with any event.
+        data_type: date
+      - name: num_days_active
+        description: Count of distinct active days.
+        data_type: int64
+      - name: num_sessions
+        description: Lifetime gap-based sessions.
+        data_type: int64
+      - name: num_events
+        description: Lifetime events.
+        data_type: int64
+      - name: platform
+        description: ANDROID or IOS (constant per device-scoped id).
+        data_type: string
+      - name: first_country
+        description: Country of the user's first observed event.
+        data_type: string
+      - name: acquisition_medium
+        description: First non-null traffic_source medium.
+        data_type: string
+      - name: acquisition_source
+        description: First non-null traffic_source source.
+        data_type: string
+      - name: initial_extra_steps
+        description: Latest observed extra-steps starting-grant bucket.
+        data_type: int64
+      - name: num_spend_events
+        description: Lifetime spend_virtual_currency events.
+        data_type: int64
+      - name: has_uninstalled
+        description: True if an app_remove event was observed.
+        data_type: boolean
+    data_tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "last_seen_date >= first_seen_date"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "num_events > 0 and num_days_active > 0"

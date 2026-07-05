@@ -2,6 +2,9 @@
 dialect = bigquery
 templater = dbt
 max_line_length = 100
+# ST06 (order columns by complexity) conflicts with semantic column
+# grouping in contracted marts, where order is part of the interface.
+exclude_rules = structure.column_order
 
 [sqlfluff:templater:dbt]
 project_dir = dbt
@@ -17,6 +20,9 @@ capitalisation_policy = lower
 
 [sqlfluff:rules:capitalisation.identifiers]
 extended_capitalisation_policy = snake
+# CP02's snake regex rejects metric suffixes like retention_d7, which are
+# the project-standard names (see CLAUDE.md testing examples).
+ignore_words_regex = ^(is_)?(retained|retention)_d[0-9]+$
 
 [sqlfluff:rules:capitalisation.functions]
 extended_capitalisation_policy = lower

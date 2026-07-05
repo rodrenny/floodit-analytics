@@ -1,0 +1,104 @@
+version: 2
+
+models:
+  - name: daily_active_users
+    description: >
+      Grain: one row per calendar day with any activity. DAU = distinct
+      users with at least one event. new_users = users on their first-ever
+      observed day; for the first days of the replay window this overstates
+      "new" (installs predating the window look new). Edge case documented
+      here, not hidden.
+    config:
+      contract:
+        enforced: true
+    columns:
+      - name: activity_date
+        description: Calendar day (UTC).
+        data_type: date
+        data_tests:
+          - unique
+          - not_null
+      - name: dau
+        description: Distinct active users.
+        data_type: int64
+        data_tests:
+          - not_null
+      - name: new_users
+        description: Users whose first observed day is this day.
+        data_type: int64
+      - name: returning_users
+        description: dau minus new_users.
+        data_type: int64
+      - name: num_sessions
+        description: Gap-based sessions touching the day.
+        data_type: int64
+      - name: num_events
+        description: Total events.
+        data_type: int64
+      - name: engagement_minutes
+        description: Sum of engagement time, minutes.
+        data_type: float64
+      - name: quickplay_users
+        description: Distinct users with quickplay events.
+        data_type: int64
+      - name: progressive_users
+        description: Distinct users with progressive-mode events.
+        data_type: int64
+    data_tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "dau >= new_users"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "dau > 0 and returning_users >= 0"
+
+  - name: retention_cohorts
+    description: >
+      Grain: one row per first_open cohort date. Classic day-N retention:
+      retained on day N iff active exactly N days after first_open.
+      Rates are null (never zero) when cohort_date + N is beyond the loaded
+      window — an unobservable horizon is not churn. Only users whose
+      first_open occurred inside the window form cohorts.
+    config:
+      contract:
+        enforced: true
+    columns:
+      - name: cohort_date
+        description: Date of the cohort's first_open.
+        data_type: date
+        data_tests:
+          - unique
+          - not_null
+      - name: cohort_size
+        description: Users whose first_open fell on cohort_date.
+        data_type: int64
+        data_tests:
+          - not_null
+      - name: retained_d1
+        description: Cohort members active exactly 1 day later.
+        data_type: int64
+      - name: retained_d7
+        description: Cohort members active exactly 7 days later.
+        data_type: int64
+      - name: retained_d30
+        description: Cohort members active exactly 30 days later.
+        data_type: int64
+      - name: retention_d1
+        description: retained_d1 / cohort_size; null if horizon unobserved.
+        data_type: float64
+      - name: retention_d7
+        description: retained_d7 / cohort_size; null if horizon unobserved.
+        data_type: float64
+      - name: retention_d30
+        description: retained_d30 / cohort_size; null if horizon unobserved.
+        data_type: float64
+    data_tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "cohort_size > 0"
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: >
+              (retention_d1 is null or retention_d1 between 0 and 1)
+              and (retention_d7 is null or retention_d7 between 0 and 1)
+              and (retention_d30 is null or retention_d30 between 0 and 1)
