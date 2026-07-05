@@ -1,0 +1,32 @@
+version: 2
+
+# Placeholders per project non-goals: no BI layer in v1. These declare the
+# intended consumers so `dbt docs` lineage shows where the marts would land.
+exposures:
+  - name: engagement_dashboard
+    label: Engagement dashboard (placeholder)
+    type: dashboard
+    maturity: low
+    description: >
+      Placeholder for the DAU/retention dashboard a BI tool would own.
+      No dashboard exists in v1 — see README non-goals.
+    depends_on:
+      - ref('daily_active_users')
+      - ref('retention_cohorts')
+    owner:
+      name: Renny Rodriguez
+      email: rennyrafaelrodriguez@gmail.com
+
+  - name: game_economy_review
+    label: Game economy review (placeholder)
+    type: analysis
+    maturity: low
+    description: >
+      Placeholder for the recurring extra-steps economy review consuming
+      the funnel and economy marts.
+    depends_on:
+      - ref('level_funnel_daily')
+      - ref('extra_steps_economy_daily')
+    owner:
+      name: Renny Rodriguez
+      email: rennyrafaelrodriguez@gmail.com
