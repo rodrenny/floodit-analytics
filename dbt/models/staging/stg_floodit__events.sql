@@ -69,41 +69,40 @@ renamed as (
             as int64
         ) as initial_extra_steps,
 
-        -- content fingerprint (helper, dropped below): the natural key of an
-        -- event. Uses only fields present identically in the public shards
-        -- and the replayed raw table, so event_pk matches across dev and prod
-        -- sources despite the raw table's wider (superset) schema.
+        -- raw event_params JSON: part of the content key below, then dropped.
         to_json_string(event_params) as event_params_json
 
     from source
 
 ),
 
-deduplicated as (
+keyed as (
 
-    -- GA4 has no native event id and occasionally emits byte-identical
-    -- duplicate events. Verified on this export: every collision on
-    -- (user, event_at, event_name, params) is a true duplicate — distinct
-    -- events never collide — so collapsing them is correct and makes event_pk
-    -- deterministic. (row_number() without an order by, used previously,
-    -- assigned the key arbitrarily across runs; identical rows have no
-    -- natural tie-breaker, so dedup is the only deterministic fix.)
-    select *
+    -- event_pk is the identity of the full normalized payload: a hash of
+    -- every output column plus the event_params JSON. Because it hashes the
+    -- whole payload, two rows share a key only when they are identical in
+    -- every attribute this model keeps — so the dedup below can never pick
+    -- arbitrarily between rows that actually differ (the earlier key, over
+    -- just user/event_at/event_name/params, could). Every hashed field is
+    -- derived only from original GA4 columns, so the key is identical across
+    -- the dev (public shard) and prod (raw superset) sources.
+    --
+    -- GA4 has no native event id and occasionally re-delivers an event with
+    -- only server-side metadata differing (e.g. event_server_timestamp_offset,
+    -- which this model does not keep) — those re-deliveries are byte-identical
+    -- in the payload and collapse deterministically.
+    select
+        to_hex(md5(to_json_string(renamed))) as event_pk,
+        renamed.* except (event_params_json)
     from renamed
-    qualify row_number() over (
-        partition by user_pseudo_id, event_at, event_name, event_params_json
-    ) = 1
 
 ),
 
 final as (
 
-    select
-        {{ dbt_utils.generate_surrogate_key(
-            ['user_pseudo_id', 'event_at', 'event_name', 'event_params_json']
-        ) }} as event_pk,
-        * except (event_params_json)
-    from deduplicated
+    select *
+    from keyed
+    qualify row_number() over (partition by event_pk) = 1
 
 )
 
