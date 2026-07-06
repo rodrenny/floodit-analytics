@@ -67,6 +67,18 @@ resource "google_bigquery_dataset" "analytics" {
   description = "Production dbt output (marts). No expiration."
 }
 
+# Elementary writes monitoring results into <prod>_elementary. dbt creates
+# schemas it can't already see, and the least-privilege CI SA cannot create
+# datasets — so this must be provisioned here (not left to the first prod
+# run) and the SA granted access below, or the scheduled build fails on a
+# CREATE SCHEMA it isn't permitted to run.
+resource "google_bigquery_dataset" "analytics_elementary" {
+  dataset_id  = "analytics_elementary"
+  location    = var.location
+  labels      = local.labels
+  description = "Elementary monitoring results for the analytics (prod) dataset. No expiration."
+}
+
 resource "google_bigquery_dataset" "dbt_dev" {
   dataset_id                 = "dbt_renny"
   location                   = var.location
@@ -128,10 +140,11 @@ resource "google_project_iam_member" "ci_job_user" {
 
 resource "google_bigquery_dataset_iam_member" "ci_data_editor" {
   for_each = {
-    raw       = google_bigquery_dataset.raw_floodit.dataset_id
-    analytics = google_bigquery_dataset.analytics.dataset_id
-    dev       = google_bigquery_dataset.dbt_dev.dataset_id
-    ci        = google_bigquery_dataset.dbt_ci.dataset_id
+    raw        = google_bigquery_dataset.raw_floodit.dataset_id
+    analytics  = google_bigquery_dataset.analytics.dataset_id
+    dev        = google_bigquery_dataset.dbt_dev.dataset_id
+    ci         = google_bigquery_dataset.dbt_ci.dataset_id
+    elementary = google_bigquery_dataset.analytics_elementary.dataset_id
   }
   dataset_id = each.value
   role       = "roles/bigquery.dataEditor"

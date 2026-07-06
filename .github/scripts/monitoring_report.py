@@ -9,7 +9,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from google.api_core.exceptions import NotFound
+from google.api_core.exceptions import Forbidden, NotFound
 from google.cloud import bigquery
 
 PROJECT_ID = "data-eng-491120"
@@ -49,6 +49,14 @@ def main() -> int:
         rows = list(client.query(RESULTS_SQL.format(hours=args.hours), job_config=job_config))
     except NotFound:
         lines.append("_No Elementary results dataset yet (first prod run pending)._")
+        Path(args.output).write_text("\n".join(lines) + "\n")
+        print("\n".join(lines))
+        return 0
+    except Forbidden as exc:
+        # The report is informational; a permissions gap on the results
+        # dataset must not fail the workflow (the build/freshness gates are
+        # the real signal). Surface it clearly instead of crashing.
+        lines.append(f"_Elementary results not accessible: {exc.message}_")
         Path(args.output).write_text("\n".join(lines) + "\n")
         print("\n".join(lines))
         return 0
